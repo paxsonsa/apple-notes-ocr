@@ -1,0 +1,42 @@
+[project]
+name = "apple-notes-ocr"
+version = "0.1.0"
+description = "Extract and OCR Apple Notes drawings on macOS - CLI tool and MCP server for Claude"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["apple", "notes", "mcp", "ocr", "handwriting", "macos", "claude"]
+authors = [
+    { name = "Andrew Paxson" }
+]
+
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+apple-notes-ocr = "apple_notes_ocr.cli:main"
+apple-notes-mcp = "apple_notes_ocr.server:main"
+
+[project.urls]
+Repository = "https://github.com/USER/apple-notes-ocr"
+Issues = "https://github.com/USER/apple-notes-ocr/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/apple_notes_ocr"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "mypy>=1.0.0",
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
