@@ -167,6 +167,33 @@ async def list_tools() -> list[Tool]:
                 "required": ["attachment_id"]
             }
         ),
+        Tool(
+            name="list_tags",
+            description="List all hashtags used across Apple Notes, with note counts. Use this to discover available tags for filtering.",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        ),
+        Tool(
+            name="get_notes_by_tag",
+            description="Get all notes that have a specific hashtag.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tag": {
+                        "type": "string",
+                        "description": "The tag to filter by (with or without #)"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum number of notes to return (default: 50)",
+                        "default": 50
+                    }
+                },
+                "required": ["tag"]
+            }
+        ),
     ]
 
 
@@ -184,6 +211,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent | 
             return await handle_list_attachments(arguments)
         elif name == "get_drawing":
             return await handle_get_drawing(arguments)
+        elif name == "list_tags":
+            return await handle_list_tags(arguments)
+        elif name == "get_notes_by_tag":
+            return await handle_get_notes_by_tag(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
@@ -233,13 +264,17 @@ async def handle_list_notes(arguments: dict[str, Any]) -> list[TextContent]:
             except Exception:
                 pass
 
+        # Get note's tags
+        note_tags = db.get_note_tags(note.pk) if not note.is_encrypted else []
+
         notes.append({
             "pk": note.pk,
             "title": note.title,
             "folder": note.folder_name,
             "modified": format_datetime(note.modified),
             "is_encrypted": note.is_encrypted,
-            "has_drawings": has_drawings
+            "has_drawings": has_drawings,
+            "tags": note_tags
         })
 
     result = {
@@ -278,12 +313,16 @@ async def handle_search_notes(arguments: dict[str, Any]) -> list[TextContent]:
         if len(results) >= limit:
             break
 
+        # Get note's tags
+        note_tags = db.get_note_tags(note.pk) if not note.is_encrypted else []
+
         item = {
             "pk": note.pk,
             "title": note.title,
             "folder": note.folder_name,
             "modified": format_datetime(note.modified),
             "is_encrypted": note.is_encrypted,
+            "tags": note_tags,
             "preview": None,
             "has_drawings": False
         }
@@ -343,12 +382,16 @@ async def handle_get_note(arguments: dict[str, Any]) -> list[TextContent | Image
             text=f"Note '{note.title}' is encrypted and cannot be read"
         )]
 
+    # Get note's tags
+    note_tags = db.get_note_tags(note.pk)
+
     result = {
         "pk": note.pk,
         "title": note.title,
         "folder": note.folder_name,
         "created": format_datetime(note.created),
         "modified": format_datetime(note.modified),
+        "tags": note_tags,
         "content": None,
         "drawings": []
     }
@@ -477,6 +520,89 @@ async def handle_get_drawing(arguments: dict[str, Any]) -> list[TextContent | Im
         ]
 
     return [TextContent(type="text", text="Drawing data not available")]
+
+
+async def handle_list_tags(arguments: dict[str, Any]) -> list[TextContent]:
+    """List all tags with their note counts."""
+    db = get_db()
+
+    tags = db.get_tags_with_counts()
+
+    result = {
+        "count": len(tags),
+        "tags": tags
+    }
+
+    return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+
+async def handle_get_notes_by_tag(arguments: dict[str, Any]) -> list[TextContent]:
+    """Get notes filtered by a specific tag."""
+    db = get_db()
+    parser = get_parser()
+    notes_filter = get_filter()
+
+    tag = arguments.get("tag", "")
+    limit = arguments.get("limit", 50)
+
+    if not tag:
+        return [TextContent(type="text", text="Error: tag is required")]
+
+    results = []
+    filtered_count = 0
+
+    for note in db.get_notes_by_tag(tag):
+        # Apply configured filters
+        if not notes_filter.should_include(note.folder_name, note.title):
+            filtered_count += 1
+            continue
+
+        if len(results) >= limit:
+            break
+
+        # Get note's tags
+        note_tags = db.get_note_tags(note.pk)
+
+        item = {
+            "pk": note.pk,
+            "title": note.title,
+            "folder": note.folder_name,
+            "modified": format_datetime(note.modified),
+            "is_encrypted": note.is_encrypted,
+            "tags": note_tags,
+            "preview": None,
+            "has_drawings": False
+        }
+
+        if note.zdata and not note.is_encrypted:
+            try:
+                parsed = parser.parse(note.zdata)
+                text = parser.get_plain_text(parsed)
+                item["preview"] = text[:300] + "..." if len(text) > 300 else text
+
+                attachments = parser.extract_attachments(parsed)
+                item["has_drawings"] = any(
+                    a.get('type_uti', '') in AttachmentType.DRAWING_TYPES
+                    for a in attachments
+                )
+            except Exception:
+                pass
+
+        results.append(item)
+
+    # Normalize tag for display
+    tag_display = tag.lstrip('#').upper()
+
+    result = {
+        "tag": tag_display,
+        "count": len(results),
+        "results": results
+    }
+
+    if notes_filter.is_configured():
+        result["filtered_count"] = filtered_count
+
+    return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
 
 async def _main():

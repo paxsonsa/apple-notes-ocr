@@ -8,7 +8,7 @@ Extract and OCR handwritten notes from Apple Notes on macOS. Includes a CLI tool
 
 - Read Apple Notes content (text, metadata)
 - Extract drawings/sketches as PNG images for OCR
-- Search notes by title
+- Search notes by title or filter by hashtag
 - MCP server for Claude Code integration
 - Filter notes by folder or title pattern for privacy
 
@@ -88,6 +88,13 @@ uv run apple-notes-ocr --export ./output --include-drawings
 
 # List available drawings
 uv run apple-notes-ocr --list-drawings
+
+# List all tags
+uv run apple-notes-ocr --list-tags
+
+# Filter notes by tag
+uv run apple-notes-ocr --tag sample
+uv run apple-notes-ocr --tag "#project" --format json
 ```
 
 ### Output Formats
@@ -98,15 +105,17 @@ uv run apple-notes-ocr --list-drawings
 
 ## MCP Server
 
-The MCP server exposes Apple Notes to Claude Code with 5 tools:
+The MCP server exposes Apple Notes to Claude Code with 7 tools:
 
 | Tool | Description |
 |------|-------------|
-| `list_notes` | List all notes with metadata and `has_drawings` flag |
-| `search_notes` | Search notes by title with content preview |
+| `list_notes` | List all notes with metadata, `has_drawings` flag, and tags |
+| `search_notes` | Search notes by title with content preview and tags |
 | `get_note` | Get note content with `[DRAWING:uuid]` markers. Set `include_drawings=true` to embed images for OCR |
 | `list_attachments` | List all attachments for a note WITHOUT image data (avoids size limits) |
 | `get_drawing` | Fetch a single drawing as PNG image by UUID |
+| `list_tags` | List all hashtags used across notes with note counts |
+| `get_notes_by_tag` | Get all notes that have a specific hashtag |
 
 ### Setup for Claude Code
 
@@ -204,6 +213,8 @@ So you know exactly where each drawing appears in context.
 - "Show me the note about project ideas" → `search_notes` + `get_note`
 - "Read my HVTs note and OCR all the drawings" → `get_note(include_drawings=true)`
 - "Show me just the first drawing from that note" → `get_drawing(uuid)`
+- "What tags do I use in my notes?" → `list_tags`
+- "Show me all notes tagged #project" → `get_notes_by_tag(tag="project")`
 
 ## How It Works
 

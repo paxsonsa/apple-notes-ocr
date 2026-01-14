@@ -55,6 +55,16 @@ class FolderRecord:
     identifier: Optional[str] = None
 
 
+@dataclass
+class TagRecord:
+    """Hashtag record from database."""
+    pk: int
+    note_pk: int
+    identifier: str
+    tag_text: str  # Full tag with # (e.g., "#sample")
+    tag_name: str  # Tag without # (e.g., "sample")
+
+
 class NotesDatabase:
     """
     Interface to Apple Notes SQLite database.
@@ -360,6 +370,139 @@ class NotesDatabase:
                   AND note.ZTITLE1 LIKE ?
                 ORDER BY note.ZMODIFICATIONDATE1 DESC
             """, (f'%{query}%',))
+
+            for row in cursor:
+                yield NoteRecord(
+                    pk=row['pk'],
+                    title=row['title'] or 'Untitled',
+                    folder_pk=row['folder_pk'],
+                    folder_name=row['folder_name'],
+                    account_pk=row['account_pk'],
+                    account_name=row['account_name'],
+                    account_identifier=row['account_identifier'],
+                    created=self._coredata_to_datetime(row['created']),
+                    modified=self._coredata_to_datetime(row['modified']),
+                    zdata=row['zdata'],
+                    is_encrypted=row['crypto_tag'] is not None,
+                    identifier=row['identifier']
+                )
+        finally:
+            conn.close()
+
+    def get_all_tags(self) -> list[str]:
+        """
+        Get all unique tags across all notes.
+
+        Returns:
+            List of unique tag names (without #), sorted alphabetically
+        """
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT ZTOKENCONTENTIDENTIFIER as tag_name
+                FROM ZICCLOUDSYNCINGOBJECT
+                WHERE ZTYPEUTI1 = 'com.apple.notes.inlinetextattachment.hashtag'
+                  AND ZMARKEDFORDELETION != 1
+                  AND ZTOKENCONTENTIDENTIFIER IS NOT NULL
+                ORDER BY ZTOKENCONTENTIDENTIFIER
+            """)
+            return [row['tag_name'] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_tags_with_counts(self) -> list[dict]:
+        """
+        Get all unique tags with their note counts.
+
+        Returns:
+            List of dicts with 'tag' and 'count' keys
+        """
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    ZTOKENCONTENTIDENTIFIER as tag_name,
+                    COUNT(DISTINCT ZNOTE1) as note_count
+                FROM ZICCLOUDSYNCINGOBJECT
+                WHERE ZTYPEUTI1 = 'com.apple.notes.inlinetextattachment.hashtag'
+                  AND ZMARKEDFORDELETION != 1
+                  AND ZTOKENCONTENTIDENTIFIER IS NOT NULL
+                GROUP BY ZTOKENCONTENTIDENTIFIER
+                ORDER BY note_count DESC, ZTOKENCONTENTIDENTIFIER
+            """)
+            return [{'tag': row['tag_name'], 'count': row['note_count']} for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_note_tags(self, note_pk: int) -> list[str]:
+        """
+        Get all tags for a specific note.
+
+        Args:
+            note_pk: The note's primary key
+
+        Returns:
+            List of tag names (without #)
+        """
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT ZTOKENCONTENTIDENTIFIER as tag_name
+                FROM ZICCLOUDSYNCINGOBJECT
+                WHERE ZTYPEUTI1 = 'com.apple.notes.inlinetextattachment.hashtag'
+                  AND ZNOTE1 = ?
+                  AND ZMARKEDFORDELETION != 1
+                  AND ZTOKENCONTENTIDENTIFIER IS NOT NULL
+                ORDER BY ZTOKENCONTENTIDENTIFIER
+            """, (note_pk,))
+            return [row['tag_name'] for row in cursor.fetchall()]
+        finally:
+            conn.close()
+
+    def get_notes_by_tag(self, tag: str) -> Iterator[NoteRecord]:
+        """
+        Get all notes with a specific tag.
+
+        Args:
+            tag: Tag name (with or without #)
+
+        Yields:
+            NoteRecord for each matching note
+        """
+        # Normalize tag - remove # if present, uppercase for matching
+        tag_name = tag.lstrip('#').upper()
+
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT DISTINCT
+                    note.Z_PK as pk,
+                    note.ZTITLE1 as title,
+                    note.ZFOLDER as folder_pk,
+                    folder.ZTITLE2 as folder_name,
+                    note.ZACCOUNT4 as account_pk,
+                    account.ZNAME as account_name,
+                    account.ZIDENTIFIER as account_identifier,
+                    note.ZCREATIONDATE1 as created,
+                    note.ZMODIFICATIONDATE1 as modified,
+                    note.ZIDENTIFIER as identifier,
+                    data.ZDATA as zdata,
+                    note.ZCRYPTOTAG as crypto_tag
+                FROM ZICCLOUDSYNCINGOBJECT AS note
+                INNER JOIN ZICCLOUDSYNCINGOBJECT AS tag ON tag.ZNOTE1 = note.Z_PK
+                LEFT JOIN ZICNOTEDATA AS data ON data.ZNOTE = note.Z_PK
+                LEFT JOIN ZICCLOUDSYNCINGOBJECT AS folder ON folder.Z_PK = note.ZFOLDER
+                LEFT JOIN ZICCLOUDSYNCINGOBJECT AS account ON account.Z_PK = note.ZACCOUNT4
+                WHERE tag.ZTYPEUTI1 = 'com.apple.notes.inlinetextattachment.hashtag'
+                  AND tag.ZTOKENCONTENTIDENTIFIER = ?
+                  AND note.ZMARKEDFORDELETION != 1
+                  AND tag.ZMARKEDFORDELETION != 1
+                ORDER BY note.ZMODIFICATIONDATE1 DESC
+            """, (tag_name,))
 
             for row in cursor:
                 yield NoteRecord(

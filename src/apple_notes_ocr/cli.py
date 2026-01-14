@@ -323,6 +323,63 @@ def list_drawings(extractor: AttachmentExtractor, args: argparse.Namespace) -> N
             print()
 
 
+def list_tags(db: NotesDatabase, args: argparse.Namespace) -> None:
+    """List all tags with their note counts."""
+    tags = db.get_tags_with_counts()
+
+    if args.format == 'json':
+        print(json.dumps(tags, indent=2))
+    else:
+        print(f"Found {len(tags)} tags:\n")
+        for t in tags:
+            count_str = f"({t['count']} note{'s' if t['count'] != 1 else ''})"
+            print(f"  #{t['tag']} {count_str}")
+
+
+def list_notes_by_tag(db: NotesDatabase, parser: NoteParser, args: argparse.Namespace) -> None:
+    """List notes with a specific tag."""
+    notes = list(db.get_notes_by_tag(args.tag))
+
+    if args.format == 'json':
+        output = []
+        for note in notes:
+            note_tags = db.get_note_tags(note.pk)
+            item = {
+                'pk': note.pk,
+                'identifier': note.identifier,
+                'title': note.title,
+                'folder': note.folder_name,
+                'modified': format_datetime(note.modified),
+                'is_encrypted': note.is_encrypted,
+                'tags': note_tags
+            }
+
+            # Try to get preview of content
+            if note.zdata and not note.is_encrypted:
+                try:
+                    parsed = parser.parse(note.zdata)
+                    text = parser.get_plain_text(parsed)
+                    item['preview'] = text[:200] + '...' if len(text) > 200 else text
+                except Exception:
+                    item['preview'] = None
+
+            output.append(item)
+        print(json.dumps(output, indent=2))
+    else:
+        tag_display = args.tag.lstrip('#').upper()
+        print(f"Found {len(notes)} notes with #{tag_display}:\n")
+        for note in notes:
+            encrypted = " [ENCRYPTED]" if note.is_encrypted else ""
+            folder = f" ({note.folder_name})" if note.folder_name else ""
+            note_tags = db.get_note_tags(note.pk)
+            tags_str = " ".join(f"#{t}" for t in note_tags) if note_tags else ""
+            print(f"[{note.pk}] {note.title}{folder}{encrypted}")
+            print(f"    Modified: {format_datetime(note.modified)}")
+            if tags_str:
+                print(f"    Tags: {tags_str}")
+            print()
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Extract content from Apple Notes",
@@ -373,6 +430,18 @@ def main():
         help='Custom path to NoteStore.sqlite'
     )
 
+    parser.add_argument(
+        '--list-tags',
+        action='store_true',
+        help='List all tags with note counts'
+    )
+
+    parser.add_argument(
+        '--tag', '-t',
+        type=str,
+        help='Filter notes by tag (with or without #)'
+    )
+
     args = parser.parse_args()
 
     # Initialize components
@@ -392,6 +461,10 @@ def main():
     # Route to appropriate handler
     if args.list_drawings:
         list_drawings(extractor, args)
+    elif args.list_tags:
+        list_tags(db, args)
+    elif args.tag:
+        list_notes_by_tag(db, note_parser, args)
     elif args.export:
         # Export can work with --note-id or --search to filter
         export_notes(db, note_parser, extractor, args)
