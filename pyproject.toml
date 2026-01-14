@@ -16,7 +16,7 @@ dependencies = [
 
 [project.scripts]
 apple-notes-ocr = "apple_notes_ocr.cli:main"
-apple-notes-mcp = "apple_notes_ocr.server:main"
+apple-notes-ocr-mcp = "apple_notes_ocr.server:main"
 
 [project.urls]
 Repository = "https://github.com/USER/apple-notes-ocr"

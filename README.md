@@ -2,6 +2,8 @@
 
 Extract and OCR handwritten notes from Apple Notes on macOS. Includes a CLI tool and an MCP server for AI Agent integration.
 
+![Demo](docs/demo.gif)
+
 ## Features
 
 - Read Apple Notes content (text, metadata)
@@ -115,7 +117,7 @@ Add to `~/.claude/settings.json`:
   "mcpServers": {
     "apple-notes": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/USER/apple-notes-ocr", "apple-notes-mcp"]
+      "args": ["--from", "git+https://github.com/USER/apple-notes-ocr", "apple-notes-ocr-mcp"]
     }
   }
 }
@@ -128,7 +130,7 @@ Or for local development:
   "mcpServers": {
     "apple-notes": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/apple-notes-ocr", "apple-notes-mcp"]
+      "args": ["run", "--directory", "/path/to/apple-notes-ocr", "apple-notes-ocr-mcp"]
     }
   }
 }
@@ -143,7 +145,7 @@ You can block certain notes from being accessed via environment variables:
   "mcpServers": {
     "apple-notes": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/USER/apple-notes-ocr", "apple-notes-mcp"],
+      "args": ["--from", "git+https://github.com/USER/apple-notes-ocr", "apple-notes-ocr-mcp"],
       "env": {
         "APPLE_NOTES_BLOCKED_FOLDERS": "Private,Work Confidential",
         "APPLE_NOTES_BLOCKED_TITLES": "Secret*,*password*"
